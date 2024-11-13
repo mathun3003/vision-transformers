@@ -1,0 +1,128 @@
+[tool.poetry]
+name = "blueprint-project"
+version = "0.1.0"
+description = "Blueprint template for Python projects."
+authors = ["Mathis <mathun3003@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+poethepoet = "^0.22.1"
+
+[tool.poetry.group.ci.dependencies]
+mypy = "^1.5.1"
+black = "^23.7.0"
+pylint = "^2.17.5"
+isort = "^5.12.0"
+pytest = "^7.1.2"
+pytest-cov = "^3.0.0"
+pycodestyle = "^2.11.0"
+
+[tool.poetry.scripts]
+poe = "poethepoet:main"
+
+[tool.poetry.plugins."poetry.application.plugin"]
+poethepoet = "poethepoet.plugin:PoetryPlugin"
+
+[tool.poe.tasks]
+_clean_docs.script = "shutil:rmtree('docs/_build', ignore_errors=1)"
+
+    [tool.poe.tasks.dev-setup]
+    help = "Setup the project for development"
+    cmd = "poetry install --sync --all-extras"
+
+    [tool.poe.tasks.typing]
+    help = "Run MyPy checker on the code base"
+    cmd  = "mypy blueprint_project"
+
+    [tool.poe.tasks.pep8]
+    help = "Runs PEP8 (pycodestyle) checker on the code base"
+    cmd = "pycodestyle blueprint_project --max-line-length=120"
+
+    [tool.poe.tasks.lint]
+    help = "Run pylint"
+    cmd  = "pylint blueprint_project"
+
+    [tool.poe.tasks.isort]
+    help = "Sort imports. This affects the code base as this makes changes to affected files."
+    cmd = "isort blueprint_project"
+
+    [tool.poe.tasks.black]
+    help = "Format code using black. This affects the code base as this makes changes to affected files."
+    cmd = "black blueprint_project"
+
+    [tool.poe.tasks.style-black]
+    help = "Validate black code style"
+    cmd  = "black blueprint_project --check --diff"
+
+    [tool.poe.tasks.style-isort]
+    help = "Validate isort code style"
+    cmd  = "isort blueprint_project --check --diff"
+
+    [tool.poe.tasks.style]
+    help = "Validate code style"
+    sequence = ["style-isort", "style-black", "pep8"]
+    ignore_fail = true
+
+    [tool.poe.tasks.tests]
+    help = "Run unit and feature tests"
+    cmd  = "pytest tests --cov=blueprint_project"
+
+    [tool.poe.tasks.ci]
+    help     = "Execute all CI tasks"
+    sequence = ["typing", "lint", "style", "tests"]
+    ignore_fail = true
+
+    [tool.poe.tasks.clean]
+    help = "Remove generated files"
+    cmd  = """
+    # multiline commands including comments work too!
+    rm -rf .coverage
+           .mypy_cache
+           .pytest_cache
+           ./**/__pycache__
+           dist
+           htmlcov
+           ./docs/_build
+           ./tests/fixtures/simple_project/venv
+           ./tests/fixtures/venv_project/myvenv
+           ./tests/fixtures/poetry_plugin_project/**/.venv
+           ./tests/temp
+     """
+
+    [tool.poe.tasks.install-poetry-plugin]
+    help = "Install or update this project as a plugin in poetry"
+    sequence = [
+      { cmd = "poetry self remove poethepoet"},
+      { cmd = "poetry self add \"${POE_ROOT}[poetry_plugin]\""}
+    ]
+    ignore_fail = true
+
+[tool.isort]
+profile = "black"
+py_version = 311
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+skip-string-normalization = true
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.pylint]
+max-line-length = 120
+disable = [
+    "C0103",  # invalid-name
+    "C0114",  # missing-module-docstring
+    "W1203",  # logging-fstring-interpolation
+    "E0213",  # no-self-argument
+    "E1101",  # no-member
+    "W0511",  # To-Dos
+    "R0903"   # too-few-public-methods
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
