@@ -5,9 +5,16 @@ import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
 
-from src.constants import DEMO_IMAGES_DIR, DEFAULT_PATCH_SIZE, TARGET_IMAGE_SIZE
-from src.utils import img_to_patches, load_vit_model, load_labels, generate_attention_maps, visualize_attention_maps, \
-    compute_attention_rollout, get_attention_rollout_per_layer, visualize_attention_rollout
+from src.constants import DEMO_IMAGES_DIR, DEFAULT_PATCH_SIZE, TARGET_IMAGE_SIZE, ATTN_BLOCK_IMG_URL, VIT_GIF_URL
+from src.utils import img_to_patches, load_vit_model, load_labels, compute_attention_rollout, \
+    visualize_attention_rollout
+
+# TODO: set up streamlit config
+# - full width for app
+# - color theme
+
+# load ImageNet labels
+labels = load_labels()
 
 st.title("🤖 Vision Transformers - Explained")
 
@@ -23,7 +30,7 @@ st.video(
     muted=True,
 )
 st.markdown(
-    '<a href="https://research.google/blog/transformers-for-image-recognition-at-scale/" style="color: lightgrey;">GIF Source</a>',
+    f'<a href="{str(VIT_GIF_URL)}" style="color: lightgrey;">GIF Source</a>',
     unsafe_allow_html=True
 )
 
@@ -38,7 +45,8 @@ st.text("""
 options_to_img = {
     "Cab": DEMO_IMAGES_DIR / 'yellow_cab.jpeg',
     "Airplane": DEMO_IMAGES_DIR / 'airplane.jpg',
-    # TODO: add more demo images
+    "Chihuahua": DEMO_IMAGES_DIR / 'chihuahua.jpg',
+    "Steam Locomotive": DEMO_IMAGES_DIR / 'steam_locomotive.jpeg',
 }
 # display selection options
 selection = st.pills("Objects", options_to_img.keys(), selection_mode="single")
@@ -71,7 +79,8 @@ patch_size = st.select_slider(
 
 st.markdown("Number of image patches $N$:")
 # display the number of image patches
-st.latex(fr"N=HW/P^2={img_raw.size[0]}\cdot{img_raw.size[1]}/{patch_size}^2={int((img_raw.size[0]*img_raw.size[1]) / patch_size**2)}")
+st.latex(
+    fr"N=HW/P^2={img_raw.size[0]}\cdot{img_raw.size[1]}/{patch_size}^2={int((img_raw.size[0] * img_raw.size[1]) / patch_size ** 2)}")
 
 left_col, right_col = st.columns(2)
 
@@ -93,7 +102,8 @@ with right_col:
         for i in range(num_patches_y):
             for j in range(num_patches_x):
                 # Extract the patch (first image in the batch)
-                patch = img_patches[0, :, i, j].permute(1, 2, 0).numpy()  # Convert to [H, W, C] for visualization
+                # Convert to [H, W, C] for visualization
+                patch = img_patches[0, :, i, j].permute(1, 2, 0).numpy()
                 # normalize patch values to [0, 1]
                 patch = (patch + 1) / 2
                 axs[i, j].imshow(patch)
@@ -104,47 +114,67 @@ with right_col:
 
 st.divider()
 
-# compute attention maps
-model = load_vit_model(patch_size=patch_size)
-labels = load_labels()
+with st.spinner("Performing model prediction"):
+    model, feature_extractor = load_vit_model(patch_size=patch_size, image_size=img_raw.size[0])
 
 # get model outputs
-with torch.no_grad():
-    logits = model(img)
+inputs = feature_extractor(images=img_raw, return_tensors="pt", do_resize=True, size=TARGET_IMAGE_SIZE)
+outputs = model(**inputs)
 
+# get prediction
+logits = outputs.logits
 predicted_class = logits.argmax(dim=1).item()
 predicted_label = labels[predicted_class]
 prediction_proba = round(torch.max(F.softmax(logits, dim=1), dim=1).values.item(), 2)
 
-# attentions = outputs.attentions
-num_layers = len(model.blocks)
-_, num_heads, num_patches, sequence_length = model.blocks[-1].attn.attn_map.shape
+# NOTE: Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads
+attentions = outputs.attentions
+
+num_layers = len(outputs.attentions)
+_, num_heads, num_patches, sequence_length = outputs.attentions[-1].shape
 
 st.subheader("Model Parameters and Embedding Dimensions")
-st.text(f"""
-    Predicted label: {predicted_label.capitalize()}
-    Prediction confidence: {prediction_proba}
-    Number of Attention Layers: {num_layers}
-    Number of Self-attention Heads: {num_heads}
-    Number of Tokens: {num_patches - 1} + 1 CLS token
+st.markdown(f"""
+    **Model Prediction**  
+    Predicted label: {predicted_label.capitalize()}  
+    Prediction confidence: {prediction_proba}  
+    **Internal Model Parameters**  
+    Number of Attention Layers: {num_layers}  
+    Number of Self-attention Heads: {num_heads}  
+    Number of Tokens: {num_patches - 1} + 1 CLS token  
     Sequence Length: {sequence_length}
 """)
 
-st.subheader("Attention Maps per Layer")
-st.markdown(r"Attention Weights = $\text{softmax}(\frac{\mathbf{QK}^T}{\sqrt{d}}) \in [0,1]$")
+st.subheader("Attention Rollout")
+st.text("In order to see how the attention flows through the network, multiplying the attention weights from each "
+        "attention block recursively at each layer results in the so-called attention rollout. In a Multi-head "
+        "Attention Layer, the self-attentions are fused together to a single attention weight matrix using either the "
+        "maximum, minimum, or mean across the heads' attentions")
+st.markdown(r"For $L$ layers, the attention rollout $\tilde{A}^{(l)}$ at layer $l \in \{1,…,L\}$ is recursively "
+            r"defined as:")
+st.latex(r"""
+    \tilde{A}^{(l)}=
+    \begin{cases}
+    A^{(l)}\tilde{A}^{(l-1)} & \text{if } l > 1 \\
+    A^{(l)} & \text{if } l=1
+    \end{cases}
+""")
 
-st.text("In order to capture the attention weights from a Multi-headed Attention Layer, the attention weights are "
-        "consolidated across the heads.")
+# TODO: add skip connection computation
 
 fusion_method = st.selectbox(
     label="Fusion Method",
     options=["Mean", "Min", "Max"],
-    index=2,
     help="Fusion method across heads in a MHA Layer"
 )
-# extract attention maps for CLS token from each model block
-attention_maps: list[torch.Tensor] = generate_attention_maps(model, method=fusion_method.lower())
-
-with st.spinner("Compute Attention Rollout"):
-    attention_rollout = compute_attention_rollout(attention_maps, grid_size=patch_size, image_size=img_raw.size)
-    st.pyplot(visualize_attention_rollout(img_raw, attention_rollout, patch_size))
+left_col, right_col = st.columns(spec=[.7, .3], vertical_alignment="center")
+with left_col:
+    with st.spinner("Computing Attention Rollout"):
+        attention_rollout = compute_attention_rollout(attentions, fusion_method=fusion_method.lower())
+        st.pyplot(visualize_attention_rollout(img_raw, attention_rollout, patch_size, num_layers))
+with right_col:
+    st.image(str(ATTN_BLOCK_IMG_URL), caption="Encoder Layer in ViT")
+    st.markdown(
+        f'<a href="{str(ATTN_BLOCK_IMG_URL)}" style="color: lightgrey;">Image Source</a>',
+        unsafe_allow_html=True
+    )
