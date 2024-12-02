@@ -5,9 +5,10 @@ import torch.nn.functional as F
 import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
+from torch import nn
 from transformers import ViTConfig, ViTImageProcessor, ViTForImageClassification, PreTrainedModel
 
-from src.constants import MODEL_NAME, DEFAULT_PATCH_SIZE, TARGET_IMAGE_SIZE
+from src.constants import MODEL_NAME, PATCH_SIZE, TARGET_IMAGE_SIZE
 
 
 @st.cache_data
@@ -22,19 +23,17 @@ def load_labels() -> dict:
 @st.cache_resource
 def load_vit_model(
         model_name: str = MODEL_NAME,
-        patch_size: int = DEFAULT_PATCH_SIZE,
         image_size: int = TARGET_IMAGE_SIZE
 ) -> tuple[PreTrainedModel, ViTImageProcessor]:
     """
     Loads the ViT model from HuggingFace
     :param image_size:
     :param model_name: Model name to load
-    :param patch_size: Patch size for ViT
     :return: HF ViT model and ViT feature extractor
     """
     # define model config
     config = ViTConfig.from_pretrained(model_name)
-    config.patch_size = patch_size
+    config.patch_size = PATCH_SIZE
     config.output_attentions = True,
     config.output_hidden_states = True,
     config.interpolate_pos_encoding = False,
@@ -47,19 +46,135 @@ def load_vit_model(
     return model, feature_extractor
 
 
-def img_to_patches(_im: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
+def img_to_patches(im: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     """
     Convert an image to patches.
-    :param _im: Tensor representing the image of shape [B, C, H, W]
+    :param im: Tensor representing the image of shape [B, C, H, W]
     :param patch_size: Number of pixels per dimension of the patches
     :return: Image patches as tensor with shape [B, C, num_patches_y, num_patches_x, patch_size, patch_size]
     """
-    B, C, H, W = _im.shape
+    B, C, H, W = im.shape
     # Ensure the dimensions are divisible by patch_size
     assert H % patch_size == 0 and W % patch_size == 0, "Image dimensions must be divisible by patch_size"
-    patches = _im.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+    patches = im.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
     # Rearrange dimensions to [B, C, num_patches_y, num_patches_x, patch_size, patch_size]
     return patches
+
+
+def normalize_to_range(data, new_min=-1, new_max=1):
+    data_min = data.min()
+    data_max = data.max()
+    normalized = (data - data_min) / (data_max - data_min) * (new_max - new_min) + new_min
+    return normalized
+
+
+def compute_scaled_qkv(
+        image_size: tuple,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        channel: int,
+        scaling_factor: int,
+) -> dict:
+    """
+    Computes scaled visualizations for query, key, value, and self-attention for a given channel.
+
+    Args:
+        image_size (tuple): The size of the input image (height, width).
+        queries (torch.Tensor): The query tensor with shape [1, num_tokens, num_channels].
+        keys (torch.Tensor): The key tensor with shape [1, num_tokens, num_channels].
+        values (torch.Tensor): The value tensor with shape [1, num_tokens, num_channels].
+        channel (int): The specific channel to compute visualizations for.
+        scaling_factor (int): Scaling factor for self-attention computation.
+
+    Returns:
+        dict: A dictionary containing the scaled visualizations for query, key, value, and self-attention.
+    """
+    tensors = {"query": queries, "key": keys, "value": values}
+    visualizations = {}
+
+    for tensor_name, tensor in tensors.items():
+        tensor_data = tensor.squeeze(0)[1:, channel].view(1, 1, 14, 14)  # Skip CLS token
+        tensor_resized = F.interpolate(
+            tensor_data, size=image_size, mode="bilinear", align_corners=False
+        ).squeeze(0).detach().cpu().view(*image_size, 1).numpy()
+        visualizations[tensor_name] = normalize_to_range(tensor_resized)
+
+    # Compute self-attention
+    sa = (
+            torch.softmax(
+                (queries.squeeze(0)[1:, channel].unsqueeze(1) @ keys.squeeze(0)[1:, channel].unsqueeze(1).T)
+                / scaling_factor, dim=0
+            ) @ values.squeeze(0)[1:, channel].unsqueeze(1)
+    ).squeeze(1).view(1, 1, 14, 14)
+    sa_resized = F.interpolate(sa, size=image_size, mode="bilinear", align_corners=False)
+    visualizations["self_attention"] = normalize_to_range(
+        sa_resized.squeeze(0).detach().cpu().view(*image_size, 1).numpy()
+    )
+
+    return visualizations
+
+
+def visualize_qkv(
+        image: Image,
+        visualizations: dict,
+        selected_channels: list,
+        layer_index: int,
+) -> plt.Figure:
+    """
+    Visualizes the computed query, key, value, and self-attention visualizations.
+
+    Args:
+        image (Image): The input image to overlay visualizations on.
+        visualizations (dict): A dictionary of computed visualizations for each channel.
+        selected_channels (list): List of channels to visualize.
+        layer_index (int): Index of the layer being visualized.
+
+    Returns:
+        plt.Figure: A matplotlib figure containing the visualizations.
+    """
+    # Set up the plot grid
+    fig, axes = plt.subplots(nrows=len(selected_channels), ncols=5, figsize=(25, 15))
+    colormap = "jet"
+
+    # Set the overall figure title
+    fig.suptitle(f"Query, Key, and Value Visualization for Layer {layer_index} (single head)", fontsize=20, y=0.95)
+
+    # Set column titles
+    column_titles = ["Query", "Key", "Value", "Self-Attention", "Original Image"]
+    for col, title in enumerate(column_titles):
+        fig.text(
+            x=0.1 + col * 0.18,
+            y=0.92,
+            s=title,
+            ha="center",
+            fontsize=16,
+            weight="bold",
+        )
+
+    for idx, channel in enumerate(selected_channels):
+        # Add row title with the channel number
+        axes[idx, 0].text(
+            -150, image.size[1] // 2, f"Channel {channel}", rotation=90, va="center", fontsize=14, weight="bold"
+        )
+
+        # Create visualizations for each type
+        for col, (name, data) in enumerate(
+                list(visualizations[channel].items()) + [("original", None)]
+        ):
+            axes[idx, col].imshow(image)
+            if data is not None:
+                axes[idx, col].imshow(data, cmap=colormap, alpha=0.5, vmin=-1, vmax=1)
+            axes[idx, col].axis("off")
+
+    # Add a colorbar
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.82, 0.15, 0.01, 0.7])
+    fig.colorbar(
+        axes[0, 0].images[-1], cax=cbar_ax, orientation="vertical", label="Normalized Values in range [-1, 1]"
+    )
+
+    return fig
 
 
 def compute_attention_rollout(attn_maps: list[torch.Tensor], fusion_method: str = 'mean') -> list[torch.Tensor]:

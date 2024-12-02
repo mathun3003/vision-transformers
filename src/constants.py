@@ -11,7 +11,7 @@ DEMO_IMAGES_DIR: Final[Path] = DATA_DIR / "images"
 # Model params
 MODEL_NAME: Final[str] = 'google/vit-base-patch16-224'
 TARGET_IMAGE_SIZE: Final[int] = int(MODEL_NAME.split('-')[-1][-3:])
-DEFAULT_PATCH_SIZE: Final[int] = int(MODEL_NAME.split('-')[-2][-2:])
+PATCH_SIZE: Final[int] = int(MODEL_NAME.split('-')[-2][-2:])
 
 # Image URLs
 ATTN_BLOCK_IMG_URL: Final[URL] = URL(

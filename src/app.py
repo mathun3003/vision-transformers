@@ -1,17 +1,14 @@
 import streamlit as st
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
 
-from src.constants import DEMO_IMAGES_DIR, DEFAULT_PATCH_SIZE, TARGET_IMAGE_SIZE, ATTN_BLOCK_IMG_URL, VIT_GIF_URL
+from src.constants import DEMO_IMAGES_DIR, PATCH_SIZE, TARGET_IMAGE_SIZE, ATTN_BLOCK_IMG_URL, VIT_GIF_URL
 from src.utils import img_to_patches, load_vit_model, load_labels, compute_attention_rollout, \
-    visualize_attention_rollout
-
-# TODO: set up streamlit config
-# - full width for app
-# - color theme
+    visualize_attention_rollout, visualize_qkv, compute_scaled_qkv
 
 # load ImageNet labels
 labels = load_labels()
@@ -36,7 +33,7 @@ st.markdown(
 
 # display pages
 st.divider()
-st.header("🖼️ Visualize Patches")
+st.subheader("🖼️ Visualize Patches")
 
 st.text("""
     Select an object to visualize how Vision Transformers patchify an image.
@@ -45,7 +42,6 @@ st.text("""
 options_to_img = {
     "Cab": DEMO_IMAGES_DIR / 'yellow_cab.jpeg',
     "Airplane": DEMO_IMAGES_DIR / 'airplane.jpg',
-    "Chihuahua": DEMO_IMAGES_DIR / 'chihuahua.jpg',
     "Steam Locomotive": DEMO_IMAGES_DIR / 'steam_locomotive.jpeg',
 }
 # display selection options
@@ -69,18 +65,10 @@ transform = torchvision.transforms.Compose([
 # apply torch transformation, remove batch dimension
 img = transform(img_raw).unsqueeze(0)
 
-# display patch sizes
-available_patch_sizes = [i for i in range(2, img_raw.size[0], 2) if img_raw.size[0] % i == 0]
-patch_size = st.select_slider(
-    label="Select a patch size $P$",
-    options=available_patch_sizes,
-    value=DEFAULT_PATCH_SIZE
-)
-
 st.markdown("Number of image patches $N$:")
 # display the number of image patches
 st.latex(
-    fr"N=HW/P^2={img_raw.size[0]}\cdot{img_raw.size[1]}/{patch_size}^2={int((img_raw.size[0] * img_raw.size[1]) / patch_size ** 2)}")
+    fr"N=HW/P^2={img_raw.size[0]}\cdot{img_raw.size[1]}/{PATCH_SIZE}^2={int((img_raw.size[0] * img_raw.size[1]) / PATCH_SIZE ** 2)}")
 
 left_col, right_col = st.columns(2)
 
@@ -92,9 +80,9 @@ with left_col:
 with right_col:
     st.text("Image Patches")
 
-    with st.spinner('Splitting image into patches'):
+    with st.spinner('Splitting image into patches', _cache=True):
         # split image into patches
-        img_patches = img_to_patches(img, patch_size)
+        img_patches = img_to_patches(img, PATCH_SIZE)
         # Visualize patches for the first image in the batch
         B, C, num_patches_y, num_patches_x, _, _ = img_patches.shape
         fig, axs = plt.subplots(num_patches_y, num_patches_x, figsize=(5, 5))
@@ -114,12 +102,27 @@ with right_col:
 
 st.divider()
 
-with st.spinner("Performing model prediction"):
-    model, feature_extractor = load_vit_model(patch_size=patch_size, image_size=img_raw.size[0])
+
+def hook(module: nn.Module, input: torch.Tensor, output: torch.Tensor) -> None:
+    global queries, keys, values
+    queries = module.query(input[0])
+    keys = module.key(input[0])
+    values = module.value(input[0])
+
+
+with st.spinner("Performing model prediction", _cache=True):
+    model, feature_extractor = load_vit_model(image_size=img_raw.size[0])
+    # register hook
+    queries, keys, values = torch.Tensor, torch.Tensor, torch.Tensor
+    layer_idx: int = 4
+    attn_layer = model.vit.encoder.layer[layer_idx].attention.attention
+    hook_handle = attn_layer.register_forward_hook(hook)
 
 # get model outputs
 inputs = feature_extractor(images=img_raw, return_tensors="pt", do_resize=True, size=TARGET_IMAGE_SIZE)
-outputs = model(**inputs)
+with torch.no_grad():
+    outputs = model(**inputs)
+    hook_handle.remove()
 
 # get prediction
 logits = outputs.logits
@@ -133,7 +136,7 @@ attentions = outputs.attentions
 num_layers = len(outputs.attentions)
 _, num_heads, num_patches, sequence_length = outputs.attentions[-1].shape
 
-st.subheader("Model Parameters and Embedding Dimensions")
+st.subheader("🎛️ Model Parameters and Embedding Dimensions")
 st.markdown(f"""
     **Model Prediction**  
     Predicted label: {predicted_label.capitalize()}  
@@ -145,7 +148,36 @@ st.markdown(f"""
     Sequence Length: {sequence_length}
 """)
 
-st.subheader("Attention Rollout")
+st.divider()
+
+st.subheader("🔍 Queries, Keys, and Values")
+st.text("Since the image is split into patches, the queries, keys, and values represent the transformed and embedded "
+        "input image inside the transformer. One can visualize the query, key, and value image for a given layer, "
+        "head, and embedding dimension.")
+st.markdown(r"For each self-attention layer, the input embedding $\mathbf{z_i} \in \mathbb{R}^{N \times d}$ goes "
+            r"through three linear projection layers with the weight matrices "
+            r"$W^q \in \mathbb{R}^{d \times d}, \; W^k \in \mathbb{R}^{d \times d},\; W^v \in \mathbb{R}^{d \times d}$ "
+            r"to compute the queries, keys, and values. ")
+st.latex(
+    r"\mathbf{Q}=\mathbf{z_i}W^q,\; \mathbf{K}=\mathbf{z_i}W^k,\; \mathbf{V}=\mathbf{z_i}W^v \in \mathbb{R}^{N \times d}")
+st.markdown(r"Queries and keys are used to generate the so-called attention weights in self-attention $\mathbf{QK}^T$. "
+            r"Then, the self-attention is computed as follows:")
+st.latex(
+    r"\text{SA}(\mathbf{Q}, \mathbf{K}, \mathbf{V})=\text{softmax}(\frac{\mathbf{QK}^T}{\sqrt{d}})\mathbf{V} \in \mathbb{R}^{N\times d}")
+
+selected_channels = [21, 22, 26, 42]
+with st.spinner("Computing Queries, Keys, and Values"):
+    embedding_dim: int = queries.shape[-1]
+    scaled_qkv = {
+        channel: compute_scaled_qkv(img_raw.size, queries, keys, values, channel, embedding_dim)
+        for channel in selected_channels
+    }
+    # TODO: adjust spacing of sub-titles
+    st.pyplot(visualize_qkv(img_raw, scaled_qkv, selected_channels, layer_idx))
+
+st.divider()
+
+st.subheader("🔁 Attention Rollout")
 st.text("In order to see how the attention flows through the network, multiplying the attention weights from each "
         "attention block recursively at each layer results in the so-called attention rollout. In a Multi-head "
         "Attention Layer, the self-attentions are fused together to a single attention weight matrix using either the "
@@ -171,7 +203,7 @@ left_col, right_col = st.columns(spec=[.7, .3], vertical_alignment="center")
 with left_col:
     with st.spinner("Computing Attention Rollout"):
         attention_rollout = compute_attention_rollout(attentions, fusion_method=fusion_method.lower())
-        st.pyplot(visualize_attention_rollout(img_raw, attention_rollout, patch_size, num_layers))
+        st.pyplot(visualize_attention_rollout(img_raw, attention_rollout, PATCH_SIZE, num_layers))
 with right_col:
     st.image(str(ATTN_BLOCK_IMG_URL), caption="Encoder Layer in ViT")
     st.markdown(
