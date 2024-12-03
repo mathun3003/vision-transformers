@@ -190,8 +190,11 @@ st.latex(r"""
     A^{(l)} & \text{if } l=1
     \end{cases}
 """)
+st.markdown(r"Where $A^{(l)}$ is the raw attention of layer $l$. To incorporate the skip connections around the "
+            r"Multi-head Attention Layer, $A$ is computed as the average of the input activations and the attention "
+            r"weights $W_{attn}$")
+st.latex(r"A^{(l)}=0.5 W_{attn}^{(l)} + 0.5I^{(l)}")
 
-# TODO: add skip connection computation to latex code
 
 fusion_method = st.selectbox(
     label="Fusion Method",
