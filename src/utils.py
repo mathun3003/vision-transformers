@@ -5,7 +5,6 @@ import torch.nn.functional as F
 import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
-from torch import nn
 from transformers import ViTConfig, ViTImageProcessor, ViTForImageClassification, PreTrainedModel
 
 from src.constants import MODEL_NAME, PATCH_SIZE, TARGET_IMAGE_SIZE
@@ -144,19 +143,16 @@ def visualize_qkv(
     column_titles = ["Query", "Key", "Value", "Self-Attention", "Original Image"]
     for col, title in enumerate(column_titles):
         fig.text(
-            x=0.1 + col * 0.18,
-            y=0.92,
+            x=0.18 + col * 0.14,
+            y=0.9,
             s=title,
             ha="center",
             fontsize=16,
-            weight="bold",
         )
 
     for idx, channel in enumerate(selected_channels):
         # Add row title with the channel number
-        axes[idx, 0].text(
-            -150, image.size[1] // 2, f"Channel {channel}", rotation=90, va="center", fontsize=14, weight="bold"
-        )
+        axes[idx, 0].text(-50, image.size[1] // 2, f"Channel {channel}", rotation=90, va="center", fontsize=14)
 
         # Create visualizations for each type
         for col, (name, data) in enumerate(
@@ -207,7 +203,7 @@ def compute_attention_rollout(attn_maps: list[torch.Tensor], fusion_method: str 
         else:
             raise ValueError(f"Fusion method {fusion_method} not supported")
         # Add skip connection (identity matrix)
-        attn_fused = attn_fused + torch.eye(num_tokens, device=attn_fused.device).unsqueeze(0)
+        attn_fused = 0.5 * attn_fused + 0.5 * torch.eye(num_tokens, device=attn_fused.device).unsqueeze(0)
 
         # Normalize attention matrix
         attn_fused = attn_fused / attn_fused.sum(dim=-1, keepdim=True)

@@ -17,7 +17,7 @@ st.title("🤖 Vision Transformers - Explained")
 
 st.text("Enjoy this short demonstration of Vision Transformers!")
 
-st.header("From Image to Classification")
+st.subheader("From Image to Classification")
 
 # display ViT GIF
 st.video(
@@ -172,7 +172,6 @@ with st.spinner("Computing Queries, Keys, and Values"):
         channel: compute_scaled_qkv(img_raw.size, queries, keys, values, channel, embedding_dim)
         for channel in selected_channels
     }
-    # TODO: adjust spacing of sub-titles
     st.pyplot(visualize_qkv(img_raw, scaled_qkv, selected_channels, layer_idx))
 
 st.divider()
@@ -192,7 +191,7 @@ st.latex(r"""
     \end{cases}
 """)
 
-# TODO: add skip connection computation
+# TODO: add skip connection computation to latex code
 
 fusion_method = st.selectbox(
     label="Fusion Method",
