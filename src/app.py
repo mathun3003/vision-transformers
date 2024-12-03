@@ -1,14 +1,27 @@
 import streamlit as st
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from PIL import Image
 from matplotlib import pyplot as plt
+from PIL import Image
+from torch import nn
 
-from src.constants import DEMO_IMAGES_DIR, PATCH_SIZE, TARGET_IMAGE_SIZE, ATTN_BLOCK_IMG_URL, VIT_GIF_URL
-from src.utils import img_to_patches, load_vit_model, load_labels, compute_attention_rollout, \
-    visualize_attention_rollout, visualize_qkv, compute_scaled_qkv
+from src.constants import (
+    ATTN_BLOCK_IMG_URL,
+    DEMO_IMAGES_DIR,
+    PATCH_SIZE,
+    TARGET_IMAGE_SIZE,
+    VIT_GIF_URL,
+)
+from src.utils import (
+    compute_attention_rollout,
+    compute_scaled_qkv,
+    img_to_patches,
+    load_labels,
+    load_vit_model,
+    visualize_attention_rollout,
+    visualize_qkv,
+)
 
 # load ImageNet labels
 labels = load_labels()
@@ -26,21 +39,20 @@ st.video(
     autoplay=True,
     muted=True,
 )
-st.markdown(
-    f'<a href="{str(VIT_GIF_URL)}" style="color: lightgrey;">GIF Source</a>',
-    unsafe_allow_html=True
-)
+st.markdown(f'<a href="{str(VIT_GIF_URL)}" style="color: lightgrey;">GIF Source</a>', unsafe_allow_html=True)
 
 # display pages
 st.divider()
 st.subheader("🖼️ Visualize Patches")
 
-st.text("""
+st.text(
+    """
     Select an object to visualize how Vision Transformers patchify an image.
-""")
+"""
+)
 
 options_to_img = {
-    "Cab": DEMO_IMAGES_DIR / 'yellow_cab.jpeg',
+    "Catamaran": DEMO_IMAGES_DIR / 'catamaran.jpeg',
     "Airplane": DEMO_IMAGES_DIR / 'airplane.jpg',
     "Steam Locomotive": DEMO_IMAGES_DIR / 'steam_locomotive.jpeg',
 }
@@ -58,17 +70,18 @@ img_raw = Image.open(img_path).resize((TARGET_IMAGE_SIZE, TARGET_IMAGE_SIZE))
 st.text("Image dimensions:")
 st.latex(fr"(H,W)={img_raw.size}")
 
-transform = torchvision.transforms.Compose([
-    torchvision.transforms.ToTensor(),
-    torchvision.transforms.Normalize((0.5,), (0.5,))
-])
+transform = torchvision.transforms.Compose(
+    [torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.5,), (0.5,))]
+)
 # apply torch transformation, remove batch dimension
 img = transform(img_raw).unsqueeze(0)
 
 st.markdown("Number of image patches $N$:")
 # display the number of image patches
 st.latex(
-    fr"N=HW/P^2={img_raw.size[0]}\cdot{img_raw.size[1]}/{PATCH_SIZE}^2={int((img_raw.size[0] * img_raw.size[1]) / PATCH_SIZE ** 2)}")
+    fr"N=HW/P^2={img_raw.size[0]}\cdot{img_raw.size[1]}/{PATCH_SIZE}^2="
+    fr"{int((img_raw.size[0] * img_raw.size[1]) / PATCH_SIZE ** 2)}"
+)
 
 left_col, right_col = st.columns(2)
 
@@ -103,11 +116,19 @@ with right_col:
 st.divider()
 
 
-def hook(module: nn.Module, input: torch.Tensor, output: torch.Tensor) -> None:
+# pylint: disable=unused-argument
+def hook(module: nn.Module, input_tensor: torch.Tensor, output_tensor: torch.Tensor) -> None:
+    """
+    Custom PyTorch hook to catch query, key, and value tensors during inference.
+    :param module: PyTorch model's module where the tensors should be caught
+    :param input_tensor: Input tensor
+    :param output_tensor: Output tensor (unused argument but model expects it)
+    :return: None
+    """
     global queries, keys, values
-    queries = module.query(input[0])
-    keys = module.key(input[0])
-    values = module.value(input[0])
+    queries = module.query(input_tensor[0])
+    keys = module.key(input_tensor[0])
+    values = module.value(input_tensor[0])
 
 
 with st.spinner("Performing model prediction", _cache=True):
@@ -137,39 +158,53 @@ num_layers = len(outputs.attentions)
 _, num_heads, num_patches, sequence_length = outputs.attentions[-1].shape
 
 st.subheader("🎛️ Model Parameters and Embedding Dimensions")
-st.markdown(f"""
-    **Model Prediction**  
-    Predicted label: {predicted_label.capitalize()}  
-    Prediction confidence: {prediction_proba}  
-    **Internal Model Parameters**  
-    Number of Attention Layers: {num_layers}  
-    Number of Self-attention Heads: {num_heads}  
-    Number of Tokens: {num_patches - 1} + 1 CLS token  
+st.write(
+    f"""
+    **Model Prediction**\n
+    Predicted label: {predicted_label.capitalize()}\n
+    Prediction confidence: {prediction_proba}\n
+    **Internal Model Parameters**\n
+    Number of Attention Layers: {num_layers}\n
+    Number of Self-attention Heads: {num_heads}\n
+    Number of Tokens: {num_patches - 1} + 1 CLS token\n
     Sequence Length: {sequence_length}
-""")
+"""
+)
 
 st.divider()
 
 st.subheader("🔍 Queries, Keys, and Values")
-st.text("Since the image is split into patches, the queries, keys, and values represent the transformed and embedded "
-        "input image inside the transformer. One can visualize the query, key, and value image for a given layer, "
-        "head, and embedding dimension.")
-st.markdown(r"For each self-attention layer, the input embedding $\mathbf{z_i} \in \mathbb{R}^{N \times d}$ goes "
-            r"through three linear projection layers with the weight matrices "
-            r"$W^q \in \mathbb{R}^{d \times d}, \; W^k \in \mathbb{R}^{d \times d},\; W^v \in \mathbb{R}^{d \times d}$ "
-            r"to compute the queries, keys, and values. ")
+st.text(
+    "Since the image is split into patches, the queries, keys, and values represent the transformed and embedded "
+    "input image inside the transformer. One can visualize the query, key, and value image for a given layer, "
+    "head, and embedding dimension."
+)
+st.markdown(
+    r"For each self-attention layer, the input embedding $\mathbf{z_i} \in \mathbb{R}^{N \times d}$ goes "
+    r"through three linear projection layers with the weight matrices "
+    r"$W^q \in \mathbb{R}^{d \times d}, \; W^k \in \mathbb{R}^{d \times d},\; W^v \in \mathbb{R}^{d \times d}$ "
+    r"to compute the queries, keys, and values. "
+)
 st.latex(
-    r"\mathbf{Q}=\mathbf{z_i}W^q,\; \mathbf{K}=\mathbf{z_i}W^k,\; \mathbf{V}=\mathbf{z_i}W^v \in \mathbb{R}^{N \times d}")
-st.markdown(r"Queries and keys are used to generate the so-called attention weights in self-attention $\mathbf{QK}^T$. "
-            r"Then, the self-attention is computed as follows:")
+    r"\mathbf{Q}=\mathbf{z_i}W^q,\; \mathbf{K}=\mathbf{z_i}W^k,\; \mathbf{V}=\mathbf{z_i}W^v \in \mathbb{R}^{N \times "
+    r"d}"
+)
+st.markdown(
+    r"Queries and keys are used to generate the so-called attention weights in self-attention $\mathbf{QK}^T$. "
+    r"Then, the self-attention is computed as follows:"
+)
 st.latex(
-    r"\text{SA}(\mathbf{Q}, \mathbf{K}, \mathbf{V})=\text{softmax}(\frac{\mathbf{QK}^T}{\sqrt{d}})\mathbf{V} \in \mathbb{R}^{N\times d}")
+    r"\text{SA}(\mathbf{Q}, \mathbf{K}, \mathbf{V})=\text{softmax}(\frac{\mathbf{QK}^T}{\sqrt{d}})\mathbf{V} \in "
+    r"\mathbb{R}^{N\times d}"
+)
 
 selected_channels = [21, 22, 26, 42]
 with st.spinner("Computing Queries, Keys, and Values"):
     embedding_dim: int = queries.shape[-1]
     scaled_qkv = {
-        channel: compute_scaled_qkv(img_raw.size, queries, keys, values, channel, embedding_dim)
+        channel: compute_scaled_qkv(
+            img_raw.size, torch.tensor(queries), torch.tensor(keys), torch.tensor(values), channel, embedding_dim
+        )
         for channel in selected_channels
     }
     st.pyplot(visualize_qkv(img_raw, scaled_qkv, selected_channels, layer_idx))
@@ -177,31 +212,35 @@ with st.spinner("Computing Queries, Keys, and Values"):
 st.divider()
 
 st.subheader("🔁 Attention Rollout")
-st.text("In order to see how the attention flows through the network, multiplying the attention weights from each "
-        "attention block recursively at each layer results in the so-called attention rollout. In a Multi-head "
-        "Attention Layer, the self-attentions are fused together to a single attention weight matrix using either the "
-        "maximum, minimum, or mean across the heads' attentions")
-st.markdown(r"For $L$ layers, the attention rollout $\tilde{A}^{(l)}$ at layer $l \in \{1,…,L\}$ is recursively "
-            r"defined as:")
-st.latex(r"""
+st.text(
+    "In order to see how the attention flows through the network, multiplying the attention weights from each "
+    "attention block recursively at each layer results in the so-called attention rollout. In a Multi-head "
+    "Attention Layer, the self-attentions are fused together to a single attention weight matrix using either the "
+    "maximum, minimum, or mean across the heads' attentions"
+)
+st.markdown(
+    r"For $L$ layers, the attention rollout $\tilde{A}^{(l)}$ at layer $l \in \{1,…,L\}$ is recursively defined as:"
+)
+st.latex(
+    r"""
     \tilde{A}^{(l)}=
     \begin{cases}
     A^{(l)}\tilde{A}^{(l-1)} & \text{if } l > 1 \\
     A^{(l)} & \text{if } l=1
     \end{cases}
-""")
-st.markdown(r"Where $A^{(l)}$ is the raw attention of layer $l$. To incorporate the skip connections around the "
-            r"Multi-head Attention Layer, $A$ is computed as the average of the input activations and the attention "
-            r"weights $W_{attn}$")
+"""
+)
+st.markdown(
+    r"Where $A^{(l)}$ is the raw attention of layer $l$. To incorporate the skip connections around the "
+    r"Multi-head Attention Layer, $A$ is computed as the average of the input activations and the attention "
+    r"weights $W_{attn}$"
+)
 st.latex(r"A^{(l)}=0.5 W_{attn}^{(l)} + 0.5I^{(l)}")
 
-
 fusion_method = st.selectbox(
-    label="Fusion Method",
-    options=["Mean", "Min", "Max"],
-    help="Fusion method across heads in a MHA Layer"
+    label="Fusion Method", options=["Mean", "Min", "Max"], help="Fusion method across heads in a MHA Layer"
 )
-left_col, right_col = st.columns(spec=[.7, .3], vertical_alignment="center")
+left_col, right_col = st.columns(spec=[0.7, 0.3], vertical_alignment="center")
 with left_col:
     with st.spinner("Computing Attention Rollout"):
         attention_rollout = compute_attention_rollout(attentions, fusion_method=fusion_method.lower())
@@ -209,6 +248,5 @@ with left_col:
 with right_col:
     st.image(str(ATTN_BLOCK_IMG_URL), caption="Encoder Layer in ViT")
     st.markdown(
-        f'<a href="{str(ATTN_BLOCK_IMG_URL)}" style="color: lightgrey;">Image Source</a>',
-        unsafe_allow_html=True
+        f'<a href="{str(ATTN_BLOCK_IMG_URL)}" style="color: lightgrey;">Image Source</a>', unsafe_allow_html=True
     )

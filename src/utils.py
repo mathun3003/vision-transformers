@@ -3,9 +3,14 @@ import streamlit as st
 import torch
 import torch.nn.functional as F
 import torchvision
-from PIL import Image
 from matplotlib import pyplot as plt
-from transformers import ViTConfig, ViTImageProcessor, ViTForImageClassification, PreTrainedModel
+from PIL.Image import Image
+from transformers import (
+    PreTrainedModel,
+    ViTConfig,
+    ViTForImageClassification,
+    ViTImageProcessor,
+)
 
 from src.constants import MODEL_NAME, PATCH_SIZE, TARGET_IMAGE_SIZE
 
@@ -21,8 +26,7 @@ def load_labels() -> dict:
 
 @st.cache_resource
 def load_vit_model(
-        model_name: str = MODEL_NAME,
-        image_size: int = TARGET_IMAGE_SIZE
+    model_name: str = MODEL_NAME, image_size: int = TARGET_IMAGE_SIZE
 ) -> tuple[PreTrainedModel, ViTImageProcessor]:
     """
     Loads the ViT model from HuggingFace
@@ -33,9 +37,9 @@ def load_vit_model(
     # define model config
     config = ViTConfig.from_pretrained(model_name)
     config.patch_size = PATCH_SIZE
-    config.output_attentions = True,
-    config.output_hidden_states = True,
-    config.interpolate_pos_encoding = False,
+    config.output_attentions = True
+    config.output_hidden_states = True
+    config.interpolate_pos_encoding = False
     config.return_dict = True
     config.image_size = image_size
     # load feature extractor
@@ -52,7 +56,7 @@ def img_to_patches(im: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     :param patch_size: Number of pixels per dimension of the patches
     :return: Image patches as tensor with shape [B, C, num_patches_y, num_patches_x, patch_size, patch_size]
     """
-    B, C, H, W = im.shape
+    _, _, H, W = im.shape
     # Ensure the dimensions are divisible by patch_size
     assert H % patch_size == 0 and W % patch_size == 0, "Image dimensions must be divisible by patch_size"
     patches = im.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
@@ -60,7 +64,14 @@ def img_to_patches(im: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     return patches
 
 
-def normalize_to_range(data, new_min=-1, new_max=1):
+def normalize_to_range(data: torch.Tensor, new_min: int = -1, new_max: int = 1) -> torch.Tensor:
+    """
+    Normalizes all tensor values to a given range.
+    :param data: Input tensor of shape [B, C, H, W]
+    :param new_min: Lower bound for normalization.
+    :param new_max: Upper bound for normalization
+    :return: Normalized tensor of shape [B, C, H, W]
+    """
     data_min = data.min()
     data_max = data.max()
     normalized = (data - data_min) / (data_max - data_min) * (new_max - new_min) + new_min
@@ -68,13 +79,13 @@ def normalize_to_range(data, new_min=-1, new_max=1):
 
 
 def compute_scaled_qkv(
-        image_size: tuple,
-        queries: torch.Tensor,
-        keys: torch.Tensor,
-        values: torch.Tensor,
-        channel: int,
-        scaling_factor: int,
-) -> dict:
+    image_size: tuple[int, int],
+    queries: torch.Tensor,
+    keys: torch.Tensor,
+    values: torch.Tensor,
+    channel: int,
+    scaling_factor: int,
+) -> dict[str, torch.Tensor]:
     """
     Computes scaled visualizations for query, key, value, and self-attention for a given channel.
 
@@ -94,18 +105,29 @@ def compute_scaled_qkv(
 
     for tensor_name, tensor in tensors.items():
         tensor_data = tensor.squeeze(0)[1:, channel].view(1, 1, 14, 14)  # Skip CLS token
-        tensor_resized = F.interpolate(
-            tensor_data, size=image_size, mode="bilinear", align_corners=False
-        ).squeeze(0).detach().cpu().view(*image_size, 1).numpy()
+        tensor_resized = (
+            F.interpolate(tensor_data, size=image_size, mode="bilinear", align_corners=False)
+            .squeeze(0)
+            .detach()
+            .cpu()
+            .view(*image_size, 1)
+            .numpy()
+        )
         visualizations[tensor_name] = normalize_to_range(tensor_resized)
 
     # Compute self-attention
     sa = (
+        (
             torch.softmax(
                 (queries.squeeze(0)[1:, channel].unsqueeze(1) @ keys.squeeze(0)[1:, channel].unsqueeze(1).T)
-                / scaling_factor, dim=0
-            ) @ values.squeeze(0)[1:, channel].unsqueeze(1)
-    ).squeeze(1).view(1, 1, 14, 14)
+                / scaling_factor,
+                dim=0,
+            )
+            @ values.squeeze(0)[1:, channel].unsqueeze(1)
+        )
+        .squeeze(1)
+        .view(1, 1, 14, 14)
+    )
     sa_resized = F.interpolate(sa, size=image_size, mode="bilinear", align_corners=False)
     visualizations["self_attention"] = normalize_to_range(
         sa_resized.squeeze(0).detach().cpu().view(*image_size, 1).numpy()
@@ -115,10 +137,10 @@ def compute_scaled_qkv(
 
 
 def visualize_qkv(
-        image: Image,
-        visualizations: dict,
-        selected_channels: list,
-        layer_index: int,
+    image: Image,
+    visualizations: dict,
+    selected_channels: list,
+    layer_index: int,
 ) -> plt.Figure:
     """
     Visualizes the computed query, key, value, and self-attention visualizations.
@@ -155,9 +177,7 @@ def visualize_qkv(
         axes[idx, 0].text(-50, image.size[1] // 2, f"Channel {channel}", rotation=90, va="center", fontsize=14)
 
         # Create visualizations for each type
-        for col, (name, data) in enumerate(
-                list(visualizations[channel].items()) + [("original", None)]
-        ):
+        for col, (_, data) in enumerate(list(visualizations[channel].items()) + [("original", None)]):
             axes[idx, col].imshow(image)
             if data is not None:
                 axes[idx, col].imshow(data, cmap=colormap, alpha=0.5, vmin=-1, vmax=1)
@@ -165,10 +185,8 @@ def visualize_qkv(
 
     # Add a colorbar
     fig.subplots_adjust(right=0.8)
-    cbar_ax = fig.add_axes([0.82, 0.15, 0.01, 0.7])
-    fig.colorbar(
-        axes[0, 0].images[-1], cax=cbar_ax, orientation="vertical", label="Normalized Values in range [-1, 1]"
-    )
+    cbar_ax = fig.add_axes((0.82, 0.15, 0.01, 0.7))
+    fig.colorbar(axes[0, 0].images[-1], cax=cbar_ax, orientation="vertical", label="Normalized Values in range [-1, 1]")
 
     return fig
 
@@ -218,8 +236,9 @@ def compute_attention_rollout(attn_maps: list[torch.Tensor], fusion_method: str 
     return cls_rollouts
 
 
-def visualize_attention_rollout(image: Image, attention_rollouts: list[torch.Tensor], patch_size: int,
-                                number_of_layers: int):
+def visualize_attention_rollout(
+    image: Image, attention_rollouts: list[torch.Tensor], patch_size: int, number_of_layers: int
+):
     """
     Visualize attention rollout per layer as overlays on the original image.
 
@@ -242,9 +261,14 @@ def visualize_attention_rollout(image: Image, attention_rollouts: list[torch.Ten
         # reshape CLS attention map
         cls_attn_map_view = cls_attn_map.view(1, 1, int(img_h / patch_size), int(img_w / patch_size))
         # upsample CLS attention map to image size
-        attn_map_resized = F.interpolate(
-            cls_attn_map_view, size=image.size, mode="bilinear", align_corners=False
-        ).squeeze().detach().cpu().view(*image.size, 1).numpy()
+        attn_map_resized = (
+            F.interpolate(cls_attn_map_view, size=image.size, mode="bilinear", align_corners=False)
+            .squeeze()
+            .detach()
+            .cpu()
+            .view(*image.size, 1)
+            .numpy()
+        )
 
         # Overlay attention map on the axis
         ax.imshow(img_array)

@@ -16,6 +16,8 @@ pillow = "^11.0.0"
 streamlit = "^1.40.1"
 watchdog = "^6.0.0"
 yarl = "^1.18.0"
+torch = "^2.5.1"
+torchvision = "^0.20.1"
 
 [tool.poetry.group.ci.dependencies]
 mypy = "^1.5.1"
@@ -41,44 +43,40 @@ _clean_docs.script = "shutil:rmtree('docs/_build', ignore_errors=1)"
 
     [tool.poe.tasks.typing]
     help = "Run MyPy checker on the code base"
-    cmd  = "mypy blueprint_project"
+    cmd  = "mypy src"
 
     [tool.poe.tasks.pep8]
     help = "Runs PEP8 (pycodestyle) checker on the code base"
-    cmd = "pycodestyle blueprint_project --max-line-length=120"
+    cmd = "pycodestyle src --max-line-length=120"
 
     [tool.poe.tasks.lint]
     help = "Run pylint"
-    cmd  = "pylint blueprint_project"
+    cmd  = "pylint src"
 
     [tool.poe.tasks.isort]
     help = "Sort imports. This affects the code base as this makes changes to affected files."
-    cmd = "isort blueprint_project"
+    cmd = "isort src"
 
     [tool.poe.tasks.black]
     help = "Format code using black. This affects the code base as this makes changes to affected files."
-    cmd = "black blueprint_project"
+    cmd = "black src"
 
     [tool.poe.tasks.style-black]
     help = "Validate black code style"
-    cmd  = "black blueprint_project --check --diff"
+    cmd  = "black src --check --diff"
 
     [tool.poe.tasks.style-isort]
     help = "Validate isort code style"
-    cmd  = "isort blueprint_project --check --diff"
+    cmd  = "isort src --check --diff"
 
     [tool.poe.tasks.style]
     help = "Validate code style"
     sequence = ["style-isort", "style-black", "pep8"]
     ignore_fail = true
 
-    [tool.poe.tasks.tests]
-    help = "Run unit and feature tests"
-    cmd  = "pytest tests --cov=blueprint_project"
-
     [tool.poe.tasks.ci]
     help     = "Execute all CI tasks"
-    sequence = ["typing", "lint", "style", "tests"]
+    sequence = ["typing", "lint", "style"]
     ignore_fail = true
 
     [tool.poe.tasks.clean]
@@ -128,7 +126,9 @@ disable = [
     "E0213",  # no-self-argument
     "E1101",  # no-member
     "W0511",  # To-Dos
-    "R0903"   # too-few-public-methods
+    "R0903",  # too-few-public-methods
+    "W0603",  # global-statement
+    "R0913",  # too-many-arguments
 ]
 
 [build-system]
