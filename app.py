@@ -154,8 +154,8 @@ prediction_proba = round(torch.max(F.softmax(logits, dim=1), dim=1).values.item(
 # NOTE: Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads
 attentions = outputs.attentions
 
-num_layers = len(outputs.attentions)
-_, num_heads, num_patches, sequence_length = outputs.attentions[-1].shape
+num_layers = len(attentions)
+_, num_heads, num_patches, sequence_length = attentions[-1].shape
 
 st.subheader("🎛️ Model Parameters and Embedding Dimensions")
 st.write(
