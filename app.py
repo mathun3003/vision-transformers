@@ -97,7 +97,7 @@ with right_col:
         # split image into patches
         img_patches = img_to_patches(img, PATCH_SIZE)
         # Visualize patches for the first image in the batch
-        B, C, num_patches_y, num_patches_x, _, _ = img_patches.shape
+        _, _, num_patches_y, num_patches_x, _, _ = img_patches.shape
         fig, axs = plt.subplots(num_patches_y, num_patches_x, figsize=(5, 5))
 
         for i in range(num_patches_y):
@@ -180,14 +180,14 @@ st.text(
     "head, and embedding dimension."
 )
 st.markdown(
-    r"For each self-attention layer, the input embedding $\mathbf{z_i} \in \mathbb{R}^{N \times d}$ goes "
+    r"For each self-attention layer, the input embedding $\mathbf{z}^{(l)} \in \mathbb{R}^{(N+1) \times d}$ goes "
     r"through three linear projection layers with the weight matrices "
-    r"$W^q \in \mathbb{R}^{d \times d}, \; W^k \in \mathbb{R}^{d \times d},\; W^v \in \mathbb{R}^{d \times d}$ "
+    r"$W_Q \in \mathbb{R}^{d \times d}, \; W_K \in \mathbb{R}^{d \times d},\; W_V \in \mathbb{R}^{d \times d}$ "
     r"to compute the queries, keys, and values. "
 )
 st.latex(
-    r"\mathbf{Q}=\mathbf{z_i}W^q,\; \mathbf{K}=\mathbf{z_i}W^k,\; \mathbf{V}=\mathbf{z_i}W^v \in \mathbb{R}^{N \times "
-    r"d}"
+    r"\mathbf{Q}^{(l)}=\mathbf{z}^{(l)}W_Q,\; \mathbf{K}^{(l)}=\mathbf{z}^{(l)}W_K,\; \mathbf{V}^{(l)}=\mathbf{z}^{("
+    r"l)}W_V \in \mathbb{R}^{(N+1) \times d}"
 )
 st.markdown(
     r"Queries and keys are used to generate the so-called attention weights in self-attention $\mathbf{QK}^T$. "
@@ -195,7 +195,7 @@ st.markdown(
 )
 st.latex(
     r"\text{SA}(\mathbf{Q}, \mathbf{K}, \mathbf{V})=\text{softmax}(\frac{\mathbf{QK}^T}{\sqrt{d}})\mathbf{V} \in "
-    r"\mathbb{R}^{N\times d}"
+    r"\mathbb{R}^{(N+1) \times d}"
 )
 
 selected_channels = [21, 22, 26, 42]
