@@ -216,7 +216,7 @@ st.text(
     "In order to see how the attention flows through the network, multiplying the attention weights from each "
     "attention block recursively at each layer results in the so-called attention rollout. In a Multi-head "
     "Attention Layer, the self-attentions are fused together to a single attention weight matrix using either the "
-    "maximum, minimum, or mean across the heads' attentions"
+    "maximum, minimum, or mean across the heads' attentions."
 )
 st.markdown(
     r"For $L$ layers, the attention rollout $\tilde{A}^{(l)}$ at layer $l \in \{1,…,L\}$ is recursively defined as:"
@@ -232,8 +232,8 @@ st.latex(
 )
 st.markdown(
     r"Where $A^{(l)}$ is the raw attention of layer $l$. To incorporate the skip connections around the "
-    r"Multi-head Attention Layer, $A$ is computed as the average of the input activations and the attention "
-    r"weights $W_{attn}$"
+    r"Multi-head Attention Layer, $A^{(l)}$ is computed as the average of the input activations and the attention "
+    r"weights $W_{attn}$:"
 )
 st.latex(r"A^{(l)}=0.5 W_{attn}^{(l)} + 0.5I^{(l)}")
 
