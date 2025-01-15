@@ -159,10 +159,14 @@ def visualize_qkv(
     colormap = "jet"
 
     # Set the overall figure title
-    fig.suptitle(f"Query, Key, and Value Visualization for Layer {layer_index} (single head)", fontsize=20, y=0.95)
+    fig.suptitle(
+        f"Query, Key, and Value Visualization for CLS token of Layer {layer_index} (single head)",
+        fontsize=20,
+        y=0.95
+    )
 
     # Set column titles
-    column_titles = ["Query", "Key", "Value", "Self-Attention", "Original Image"]
+    column_titles = ["Query", "Key", "Value", "Self-Attention (normalized)", "Original Image"]
     for col, title in enumerate(column_titles):
         fig.text(
             x=0.18 + col * 0.14,
