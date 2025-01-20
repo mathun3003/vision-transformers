@@ -19,6 +19,7 @@ watchdog = "^6.0.0"
 yarl = "^1.18.0"
 torch = "^2.5.1"
 torchvision = "^0.20.1"
+mpld3 = "^0.5.10"
 
 [tool.poetry.group.ci.dependencies]
 mypy = "^1.5.1"

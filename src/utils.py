@@ -78,6 +78,69 @@ def normalize_to_range(data: torch.Tensor, new_min: int = -1, new_max: int = 1) 
     return normalized
 
 
+def visualize_attention_maps(
+    attentions: torch.Tensor, layer_idx: int, head_idx: int, img: Image, **kwargs
+) -> plt.Figure:
+    """
+    Visualizing Attention Weight Matrix and (upsampled) Attention Map side by side
+    :param attentions: Tensor containing the attention weihts for all layers
+    :param layer_idx: selected layer index for visualization
+    :param head_idx: selected head index for visualization
+    :param img: input image
+    :param kwargs: additional keyword arguments
+    :return: figure
+    """
+    # select attention matrix for given layer and head
+    attention_matrix = attentions[layer_idx].squeeze()[head_idx].numpy()
+
+    fig, ax = plt.subplots(1, 3)
+
+    # Plot the attention weight matrix
+    ax[0].imshow(attention_matrix, **kwargs, cmap='jet')
+    ax[0].set_title("Attention Weight Matrix", fontsize=8)
+
+    # Generate tick positions for "CLS" and spaced-out image patches
+    num_tokens = attention_matrix.shape[0]
+    ticks_to_show = [0] + list(range(10, num_tokens, 20))  # CLS token and spaced-out patches
+    tick_labels = ["CLS"] + [str(i) for i in ticks_to_show[1:]]
+
+    # Configure ticks
+    ax[0].set_xticks(ticks_to_show)
+    ax[0].set_xticklabels(tick_labels, rotation=-30, ha="right", rotation_mode="anchor", fontsize=5)
+    ax[0].set_yticks(ticks_to_show)
+    ax[0].set_yticklabels(tick_labels, fontsize=5)
+
+    # Let the horizontal axes labeling appear on top
+    ax[0].tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
+
+    # Turn on the grid
+    ax[0].grid(which="minor", color="w", linestyle='--', linewidth=0.1)
+    ax[0].set_xticks(np.arange(attention_matrix.shape[1] + 1) - 0.5, minor=True)
+    ax[0].set_yticks(np.arange(attention_matrix.shape[0] + 1) - 0.5, minor=True)
+    ax[0].tick_params(which="minor", bottom=False, left=False)
+
+    # visualize raw attention map
+    selected_attn_map = attention_matrix[0, 1:].reshape(14, 14)
+    ax[1].matshow(selected_attn_map, cmap='jet')
+    ax[1].set_title("Attention Map of\nCLS-to-token Sequence", fontsize=8)
+    ax[1].axis('off')
+
+    # visualize upscaled attention map as overlay image
+    attn_map_scaled = (
+        F.interpolate(
+            torch.tensor(selected_attn_map).view(1, 1, 14, 14), size=img.size, mode="bilinear", align_corners=False
+        )
+        .squeeze()
+        .numpy()
+    )
+    ax[2].imshow(img)
+    ax[2].imshow(attn_map_scaled, cmap='jet', alpha=0.5)
+    ax[2].set_title("Upsampled Attention Map of\nCLS-to-token-Sequence", fontsize=8)
+    ax[2].axis('off')
+
+    return fig
+
+
 def compute_scaled_qkv(
     image_size: tuple[int, int],
     queries: torch.Tensor,
@@ -160,9 +223,7 @@ def visualize_qkv(
 
     # Set the overall figure title
     fig.suptitle(
-        f"Query, Key, and Value Visualization for CLS token of Layer {layer_index} (single head)",
-        fontsize=20,
-        y=0.95
+        f"Query, Key, and Value Visualization for CLS token of Layer {layer_index} (single head)", fontsize=20, y=0.95
     )
 
     # Set column titles

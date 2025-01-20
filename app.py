@@ -2,8 +2,8 @@ import streamlit as st
 import torch
 import torch.nn.functional as F
 import torchvision
-from matplotlib import pyplot as plt
 from PIL import Image
+from matplotlib import pyplot as plt
 from torch import nn
 
 from src.constants import (
@@ -20,7 +20,7 @@ from src.utils import (
     load_labels,
     load_vit_model,
     visualize_attention_rollout,
-    visualize_qkv,
+    visualize_qkv, visualize_attention_maps,
 )
 
 # load ImageNet labels
@@ -173,6 +173,25 @@ st.write(
 
 st.divider()
 
+st.subheader("👁️‍🗨️ Attention Weight Matrix & Attention Map")
+
+st.markdown(r"Queries, keys, and values are obtained by a linear projection of the input embeddings to a specific "
+            r"attention block. The dot product $\mathbf{QK}^T \in \mathbb{R}^{(N+1) \times (N+1)}$ yields the "
+            r"so-called attention score for each combination of tokens. The result is the attention weight matrix, "
+            r"which contains all attention scores for head $h \in [1,...,H]$ in layer $l \in [1,...,L]$. "
+            r"The first row represents the CLS-to-token attentions. As this sequence has the same length as number of "
+            r"patches, one can reshape this sequence to 2D. The resulting image is of lower resolution but can be "
+            r"upsampled to match the input image size.")
+
+st.latex(r"A^{(l)}_h = \text{softmax}(\frac{\mathbf{Q}^{(l)}_h {\mathbf{K}^{(l)}_h}^T}{\sqrt{d}})\;")
+
+# visualize attention weight matrix and attention maps
+selected_layer = st.select_slider(label=r"Encoder Layer $l$", options=range(1, 13), value=1) - 1
+selected_head = st.select_slider(label=r"Selected Head $h$ in layer $l$", options=range(1, 13), value=1) - 1
+with st.spinner("Visualizing Attention", _cache=True):
+    attn_weight_matrix = visualize_attention_maps(attentions, layer_idx=selected_layer, head_idx=selected_head, img=img_raw)
+    st.pyplot(attn_weight_matrix)
+
 st.subheader("🔍 Queries, Keys, and Values")
 st.text(
     "Since the image is split into patches, the queries, keys, and values represent the transformed and embedded "
@@ -198,6 +217,7 @@ st.latex(
     r"\mathbb{R}^{(N+1) \times d}"
 )
 
+# visualize queries, keys, and values for channel dimensions
 selected_channels = [21, 22, 26, 42]
 with st.spinner("Computing Queries, Keys, and Values"):
     embedding_dim: int = queries.shape[-1]
