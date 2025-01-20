@@ -38,7 +38,7 @@ jobs:
           installer-parallel: true
       - name: "📦 Install dependencies"
         run: |
-          poetry lock --no-update
+          poetry lock
           poetry install --no-interaction --no-root --all-extras
       - name: "🔍 Run mypy"
         run: |
@@ -68,7 +68,7 @@ jobs:
           installer-parallel: true
       - name: "📦 Install dependencies"
         run: |
-          poetry lock --no-update
+          poetry lock
           poetry install --no-interaction --no-root --all-extras
       - name: "🔍 Run PEP8"
         run: |
@@ -100,7 +100,7 @@ jobs:
           installer-parallel: true
       - name: "📦 Install dependencies"
         run: |
-          poetry lock --no-update
+          poetry lock
           poetry install --no-interaction --no-root --all-extras
       - name: "🔍 Lint Code"
         run: |
@@ -132,7 +132,7 @@ jobs:
           installer-parallel: true
       - name: "📦 Install dependencies"
         run: |
-          poetry lock --no-update
+          poetry lock
           poetry install --no-interaction --no-root --all-extras
       - name: "🔍 Run isort"
         run: |
@@ -161,7 +161,7 @@ jobs:
           installer-parallel: true
       - name: "📦 Install dependencies"
         run: |
-          poetry lock --no-update
+          poetry lock
           poetry install --no-interaction --no-root --all-extras
       - name: "🔍 Run Black"
         run: |
