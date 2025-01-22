@@ -48,6 +48,7 @@ def load_vit_model(
     model = ViTForImageClassification.from_pretrained(model_name, config=config, ignore_mismatched_sizes=True)
     return model, feature_extractor
 
+
 def img_to_patches(im: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     """
     Convert an image to patches.
