@@ -179,7 +179,7 @@ st.markdown(r"Queries, keys, and values are obtained by a linear projection of t
             r"attention block. The dot product $\mathbf{QK}^T \in \mathbb{R}^{(N+1) \times (N+1)}$ yields the "
             r"so-called attention score for each combination of tokens. The result is the attention weight matrix, "
             r"which contains all attention scores for head $h \in [1,...,H]$ in layer $l \in [1,...,L]$. "
-            r"The first row represents the CLS-to-token attentions. As this sequence has the same length as number of "
+            r"The first row represents the CLS-to-patch attentions. As this sequence has the same length as number of "
             r"patches, one can reshape this sequence to 2D. The resulting image is of lower resolution but can be "
             r"upsampled to match the input image size.")
 

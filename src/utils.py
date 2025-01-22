@@ -48,7 +48,6 @@ def load_vit_model(
     model = ViTForImageClassification.from_pretrained(model_name, config=config, ignore_mismatched_sizes=True)
     return model, feature_extractor
 
-
 def img_to_patches(im: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     """
     Convert an image to patches.
@@ -122,7 +121,7 @@ def visualize_attention_maps(
     # visualize raw attention map
     selected_attn_map = attention_matrix[0, 1:].reshape(14, 14)
     ax[1].matshow(selected_attn_map, cmap='jet')
-    ax[1].set_title("Attention Map of\nCLS-to-token Sequence", fontsize=8)
+    ax[1].set_title("Attention Map of\nCLS-to-patch Sequence", fontsize=8)
     ax[1].axis('off')
 
     # visualize upscaled attention map as overlay image
@@ -135,7 +134,7 @@ def visualize_attention_maps(
     )
     ax[2].imshow(img)
     ax[2].imshow(attn_map_scaled, cmap='jet', alpha=0.5)
-    ax[2].set_title("Upsampled Attention Map of\nCLS-to-token-Sequence", fontsize=8)
+    ax[2].set_title("Upsampled Attention Map of\nCLS-to-patch-Sequence", fontsize=8)
     ax[2].axis('off')
 
     return fig
